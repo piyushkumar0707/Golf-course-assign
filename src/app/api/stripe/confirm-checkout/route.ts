@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service'
+import { resolveSubscriptionStatus } from '@/lib/subscription-status'
 
 export async function POST(req: Request) {
   try {
@@ -20,24 +22,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: existingActiveSub } = await supabase
-      .from('subscriptions')
-      .select('id, status')
-      .eq('user_id', user.id)
-      .in('status', ['active', 'trialing'])
-      .limit(1)
-      .maybeSingle()
+    const serviceSupabase = createServiceRoleClient()
 
-    if (existingActiveSub) {
-      await supabase
-        .from('profiles')
-        .update({ subscription_status: 'active' })
-        .eq('id', user.id)
+    const existingActive = await resolveSubscriptionStatus({
+      userId: user.id,
+      userEmail: user.email ?? null,
+      supabase: serviceSupabase,
+      skipStripe: true,
+    })
 
+    if (existingActive.status === 'active') {
       return NextResponse.json({
         ok: true,
-        subscriptionStatus: existingActiveSub.status,
-        profileStatus: 'active',
+        subscriptionStatus: existingActive.stripeStatus,
+        profileStatus: existingActive.status,
         source: 'db-fast-path',
       })
     }
@@ -53,58 +51,23 @@ export async function POST(req: Request) {
 
     const subscriptionFromExpand = session.subscription as any
     const subscriptionId =
-      typeof subscriptionFromExpand === 'string'
-        ? subscriptionFromExpand
-        : subscriptionFromExpand?.id
+      typeof subscriptionFromExpand === 'string' ? subscriptionFromExpand : subscriptionFromExpand?.id
 
-    if (!subscriptionId) {
+    if (!subscriptionId || typeof subscriptionId !== 'string') {
       return NextResponse.json({ error: 'No subscription found for this checkout session.' }, { status: 400 })
     }
 
-    const subscription =
-      typeof subscriptionFromExpand === 'object' && subscriptionFromExpand?.id
-        ? subscriptionFromExpand
-        : await stripe.subscriptions.retrieve(subscriptionId)
-
-    const customerId = String(subscription.customer)
-    const periodEnd =
-      typeof (subscription as any).current_period_end === 'number'
-        ? (subscription as any).current_period_end
-        : Math.floor(Date.now() / 1000)
-
-    const plan = subscription.items.data[0]?.price?.id === process.env.STRIPE_PRICE_MONTHLY ? 'monthly' : 'yearly'
-
-    const { error: upsertError } = await supabase.from('subscriptions').upsert(
-      {
-        user_id: user.id,
-        stripe_customer_id: customerId,
-        stripe_subscription_id: subscription.id,
-        plan,
-        status: subscription.status,
-        current_period_end: new Date(periodEnd * 1000).toISOString(),
-      },
-      { onConflict: 'stripe_customer_id' }
-    )
-
-    if (upsertError) {
-      return NextResponse.json({ error: upsertError.message }, { status: 500 })
-    }
-
-    const profileStatus = subscription.status === 'active' || subscription.status === 'trialing' ? 'active' : 'inactive'
-
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({ subscription_status: profileStatus })
-      .eq('id', user.id)
-
-    if (profileError) {
-      return NextResponse.json({ error: profileError.message }, { status: 500 })
-    }
+    const result = await resolveSubscriptionStatus({
+      userId: user.id,
+      userEmail: user.email ?? null,
+      supabase: serviceSupabase,
+    })
 
     return NextResponse.json({
       ok: true,
-      subscriptionStatus: subscription.status,
-      profileStatus,
+      subscriptionStatus: result.stripeStatus,
+      profileStatus: result.status,
+      source: result.source,
     })
   } catch (error: any) {
     return NextResponse.json(

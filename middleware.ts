@@ -94,42 +94,43 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    // Self-heal: if profile says inactive/lapsed but subscription is active in DB, correct profile immediately.
-    if (profile && profile.subscription_status !== 'active') {
-      const { data: activeSubs } = await supabase
-        .from('subscriptions')
-        .select('id')
-        .eq('user_id', user.id)
-        .in('status', ['active', 'trialing'])
-        .limit(1)
-
-      if (activeSubs && activeSubs.length > 0) {
-        profile = {
-          ...profile,
-          subscription_status: 'active',
-        }
-
-        await supabase
-          .from('profiles')
-          .update({ subscription_status: 'active' })
-          .eq('id', user.id)
-
-        setProfileCookies(profile, cacheTTL / 1000, now)
-      }
-    }
-
     // Use cached or freshly fetched profile for authorization checks
     if (isAdminRoute && profile?.role !== 'admin') {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 
     const isSettingsPage = path.startsWith('/dashboard/settings')
-    if (
-      isDashboardRoute &&
-      !isSettingsPage &&
-      profile?.subscription_status !== 'active'
-    ) {
-      return NextResponse.redirect(new URL('/subscribe', request.url))
+    if (isDashboardRoute && !isSettingsPage) {
+      // Active cache can be trusted for fast path.
+      if (profile?.subscription_status !== 'active') {
+        // Inactive/no-cache must be verified against canonical status endpoint before gating.
+        try {
+          const verifyRes = await fetch(new URL('/api/user/subscription', request.url), {
+            method: 'GET',
+            headers: {
+              cookie: request.headers.get('cookie') || '',
+            },
+            cache: 'no-store',
+          })
+
+          if (verifyRes.ok) {
+            const payload = await verifyRes.json()
+            if (payload?.subscriptionStatus === 'active') {
+              profile = {
+                role: profile?.role || 'subscriber',
+                subscription_status: 'active',
+              }
+              setProfileCookies(profile, cacheTTL / 1000, now)
+            } else {
+              return NextResponse.redirect(new URL('/subscribe', request.url))
+            }
+          } else {
+            return NextResponse.redirect(new URL('/subscribe', request.url))
+          }
+        } catch {
+          return NextResponse.redirect(new URL('/subscribe', request.url))
+        }
+      }
     }
   }
 

@@ -29,24 +29,30 @@ export default function Login() {
     setResendMessage(null)
     setShowResendVerification(false)
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-    if (error) {
-      const raw = (error.message || '').toLowerCase()
-      const isUnverified = raw.includes('email not confirmed') || raw.includes('email not verified')
+      if (error) {
+        const raw = (error.message || '').toLowerCase()
+        const isUnverified = raw.includes('email not confirmed') || raw.includes('email not verified')
 
-      if (isUnverified) {
-        setError('Please verify your email. A verification email has been sent to your inbox.')
-        setShowResendVerification(true)
+        if (isUnverified) {
+          setError('Please verify your email. A verification email has been sent to your inbox.')
+          setShowResendVerification(true)
+        } else {
+          setError('Unable to sign in. Please check your credentials and try again.')
+        }
       } else {
-        setError('Unable to sign in. Please check your credentials and try again.')
+        router.replace('/dashboard')
+        return
       }
+    } catch {
+      setError('Unable to reach authentication service. Please check your internet connection and try again.')
+    } finally {
       setLoading(false)
-    } else {
-      router.replace('/dashboard')
     }
   }
 
@@ -56,21 +62,25 @@ export default function Login() {
     setResendLoading(true)
     setResendMessage(null)
 
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/login`,
-      },
-    })
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/login`,
+        },
+      })
 
-    if (error) {
-      setResendMessage('Could not resend verification email right now. Please try again in a moment.')
-    } else {
-      setResendMessage('Verification email sent. Please check your inbox and spam folder.')
+      if (error) {
+        setResendMessage('Could not resend verification email right now. Please try again in a moment.')
+      } else {
+        setResendMessage('Verification email sent. Please check your inbox and spam folder.')
+      }
+    } catch {
+      setResendMessage('Could not connect to authentication service. Please try again shortly.')
+    } finally {
+      setResendLoading(false)
     }
-
-    setResendLoading(false)
   }
 
   if (!mounted) return null

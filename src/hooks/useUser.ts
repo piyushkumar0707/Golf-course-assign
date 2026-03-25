@@ -67,6 +67,8 @@ function clearCachedProfile() {
   window.localStorage.removeItem('gc_profile_cache')
 }
 
+const SYNC_TIMEOUT_MS = 30_000
+
 export function useUser() {
   const [user, setUser] = useState<User | null>(null)
   const [role, setRole] = useState<string | null>(null)
@@ -78,12 +80,18 @@ export function useUser() {
   useEffect(() => {
     let isMounted = true
     let activeUser: User | null = null
+    let syncTimeoutId: number | null = null
     const isSubscriptionReturn =
       typeof window !== 'undefined' &&
       new URLSearchParams(window.location.search).get('sub') === 'updated'
 
     if (isSubscriptionReturn) {
       setRecentCheckoutReturn(true)
+      syncTimeoutId = window.setTimeout(() => {
+        if (isMounted) {
+          setRecentCheckoutReturn(false)
+        }
+      }, SYNC_TIMEOUT_MS)
     }
 
     const applyProfile = async (currentUser: User, bypassCache = false) => {
@@ -93,25 +101,26 @@ export function useUser() {
           if (!isMounted) return
           setRole(cached.role || 'subscriber')
           setSubscriptionStatus(cached.subscriptionStatus || 'inactive')
-          return
         }
       }
 
       const { data } = await supabase
         .from('profiles')
-        .select('role, subscription_status')
+        .select('role')
         .eq('id', currentUser.id)
         .single()
 
       let canonicalStatus: string | null = null
+      let canonicalSource: string | null = null
       try {
-        const statusRes = await fetch('/api/user/subscription-status', {
+        const statusRes = await fetch('/api/user/subscription', {
           method: 'GET',
           cache: 'no-store',
         })
         if (statusRes.ok) {
           const statusData = await statusRes.json()
-          canonicalStatus = statusData?.status || null
+          canonicalStatus = statusData?.subscriptionStatus || null
+          canonicalSource = statusData?.source || null
         }
       } catch {
         canonicalStatus = null
@@ -119,8 +128,20 @@ export function useUser() {
 
       if (!isMounted) return
 
-      const nextRole = data?.role || 'subscriber'
-      const nextStatus = canonicalStatus || data?.subscription_status || 'inactive'
+      const nextRole = data?.role || role || 'subscriber'
+      const nextStatus = canonicalStatus || subscriptionStatus || 'inactive'
+
+      if (
+        subscriptionStatus === 'active' &&
+        nextStatus !== 'active' &&
+        canonicalSource &&
+        canonicalSource.startsWith('local')
+      ) {
+        // Ignore local-only demotion while waiting for reconciled/Stripe-backed signal.
+        setRole(nextRole)
+        return
+      }
+
       setRole(nextRole)
       setSubscriptionStatus(nextStatus)
       if (nextStatus === 'active') {
@@ -145,12 +166,6 @@ export function useUser() {
       setLoading(false)
 
       if (currentUser) {
-        if (isSubscriptionReturn) {
-          // After returning from checkout, force a fresh profile read.
-          await applyProfile(currentUser, true)
-          return
-        }
-
         // Try to read profile from middleware cookie first
         const profileCookie = document.cookie
           .split('; ')
@@ -162,21 +177,23 @@ export function useUser() {
             const cachedProfile = JSON.parse(decodeURIComponent(profileCookie))
             if (!isMounted) return
             setRole(cachedProfile.role || 'subscriber')
-            setSubscriptionStatus(cachedProfile.subscription_status || 'inactive')
-            if (shouldWriteCachedProfile(currentUser.id, cachedProfile.subscription_status)) {
-              writeCachedProfile(currentUser.id, cachedProfile.role, cachedProfile.subscription_status)
+            const cookieStatus = cachedProfile.subscription_status || 'inactive'
+            if (cookieStatus === 'active') {
+              setSubscriptionStatus('active')
+              if (shouldWriteCachedProfile(currentUser.id, cookieStatus)) {
+                writeCachedProfile(currentUser.id, cachedProfile.role, cookieStatus)
+              }
             }
 
             // Refresh in background to avoid stale UI after webhook updates.
             void applyProfile(currentUser, true)
-            return
           } catch (e) {
             // Cookie parse failed, will fall through to database query
           }
         }
         
         // Fallback: load from cache or database
-        await applyProfile(currentUser)
+        await applyProfile(currentUser, isSubscriptionReturn)
       } else {
         setRole(null)
         setSubscriptionStatus(null)
@@ -234,6 +251,9 @@ export function useUser() {
 
     return () => {
       isMounted = false
+      if (syncTimeoutId) {
+        window.clearTimeout(syncTimeoutId)
+      }
       window.clearInterval(refreshInterval)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('focus', handleFocus)

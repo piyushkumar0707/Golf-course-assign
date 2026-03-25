@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service'
+import { resolveSubscriptionStatus } from '@/lib/subscription-status'
 
 export async function POST() {
   try {
@@ -19,67 +21,15 @@ export async function POST() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: subs, error: subError } = await supabase
-      .from('subscriptions')
-      .select('id, stripe_customer_id, stripe_subscription_id, status, created_at')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
+    const serviceSupabase = createServiceRoleClient()
+    const resolved = await resolveSubscriptionStatus({
+      userId: user.id,
+      userEmail: user.email ?? null,
+      supabase: serviceSupabase,
+    })
 
-    if (subError) {
-      return NextResponse.json({ error: subError.message }, { status: 500 })
-    }
-
-    let customerId =
-      subs?.find((s: any) => typeof s.stripe_customer_id === 'string' && s.stripe_customer_id.length > 0)
-        ?.stripe_customer_id || null
-    const hasActiveLocal = (subs || []).some((s: any) => s.status === 'active' || s.status === 'trialing')
-
-    // Fallback: resolve customer from known subscription id.
-    if (!customerId) {
-      const subId =
-        subs?.find((s: any) => typeof s.stripe_subscription_id === 'string' && s.stripe_subscription_id.length > 0)
-          ?.stripe_subscription_id || null
-
-      if (subId) {
-        try {
-          const stripeSub = await stripe.subscriptions.retrieve(subId)
-          customerId = String(stripeSub.customer)
-
-          // Best-effort repair: persist resolved customer id locally.
-          const rowId = subs?.find((s: any) => s.stripe_subscription_id === subId)?.id
-          if (rowId) {
-            await supabase
-              .from('subscriptions')
-              .update({ stripe_customer_id: customerId })
-              .eq('id', rowId)
-          }
-        } catch {
-          // Ignore and continue fallback chain.
-        }
-      }
-    }
-
-    // Fallback: recover Stripe customer by email if local subscription row is missing.
-    if (!customerId && user.email) {
-      const customers = await stripe.customers.list({
-        email: user.email,
-        limit: 10,
-      })
-      customerId = customers.data[0]?.id || null
-    }
-
-    // Final fallback: search by metadata supabase_uuid in Stripe.
-    if (!customerId) {
-      try {
-        const search = await stripe.customers.search({
-          query: `metadata['supabase_uuid']:'${user.id}'`,
-          limit: 1,
-        })
-        customerId = search.data[0]?.id || null
-      } catch {
-        // Search API may be unavailable in some environments.
-      }
-    }
+    const customerId = resolved.customerId
+    const hasActiveLocal = resolved.status === 'active'
 
     if (!customerId) {
       return NextResponse.json(

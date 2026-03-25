@@ -1,14 +1,7 @@
 import { stripe } from '@/lib/stripe'
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-function mapStripeStatusToProfileStatus(status: string): 'active' | 'lapsed' | 'inactive' {
-  if (status === 'active' || status === 'trialing') return 'active'
-  if (status === 'past_due' || status === 'unpaid' || status === 'incomplete' || status === 'incomplete_expired') {
-    return 'lapsed'
-  }
-  return 'inactive'
-}
+import { createServiceRoleClient } from '@/lib/supabase/service'
+import { resolveSubscriptionStatus } from '@/lib/subscription-status'
 
 export async function POST(req: Request) {
   const body = await req.text()
@@ -22,149 +15,72 @@ export async function POST(req: Request) {
     return new NextResponse(`Webhook Error: ${err.message}`, { status: 400 })
   }
 
-  // Use service role for webhooks
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-
-  const getPeriodEndIso = (subscription: any) => {
-    const periodEnd =
-      typeof subscription.current_period_end === 'number'
-        ? subscription.current_period_end
-        : (subscription.current_period_end as any)?.getTime?.() / 1000 || Math.floor(Date.now() / 1000)
-    return new Date(periodEnd * 1000).toISOString()
-  }
+  // Use service role for webhook reconciliation writes.
+  const supabase = createServiceRoleClient()
 
   const findUserIdByCustomer = async (customerId: string): Promise<string | null> => {
     const { data: existing } = await supabase
       .from('subscriptions')
       .select('user_id')
       .eq('stripe_customer_id', customerId)
-      .single()
+      .maybeSingle()
 
     if (existing?.user_id) return existing.user_id
 
-    const customer = (await stripe.customers.retrieve(customerId)) as any
-    const userId = customer?.metadata?.supabase_uuid
-
-    if (!userId) return null
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('id', userId)
-      .single()
-
-    return profile?.id ?? null
-  }
-
-  const resolveUserId = async (customerId: string, fallbackUserId?: string | null): Promise<string | null> => {
-    if (fallbackUserId) {
-      return fallbackUserId
+    try {
+      const customer = (await stripe.customers.retrieve(customerId)) as any
+      return customer?.metadata?.supabase_uuid || null
+    } catch {
+      return null
     }
-
-    return findUserIdByCustomer(customerId)
-  }
-
-  const upsertSubscriptionForCustomer = async (
-    subscription: any,
-    customerId: string,
-    fallbackUserId?: string | null
-  ): Promise<string | null> => {
-    const resolvedUserId = await resolveUserId(customerId, fallbackUserId)
-
-    const payload: Record<string, any> = {
-      stripe_customer_id: customerId,
-      stripe_subscription_id: subscription.id,
-      status: subscription.status,
-      plan: subscription.items.data[0].price.id === process.env.STRIPE_PRICE_MONTHLY ? 'monthly' : 'yearly',
-      current_period_end: getPeriodEndIso(subscription),
-    }
-
-    // Never overwrite an existing user link with null.
-    if (resolvedUserId) {
-      payload.user_id = resolvedUserId
-    }
-
-    const { error: upsertError } = await supabase
-      .from('subscriptions')
-      .upsert(payload, { onConflict: 'stripe_customer_id' })
-
-    if (upsertError) {
-      throw upsertError
-    }
-
-    if (resolvedUserId) {
-      return resolvedUserId
-    }
-
-    const { data: linked } = await supabase
-      .from('subscriptions')
-      .select('user_id')
-      .eq('stripe_customer_id', customerId)
-      .single()
-
-    return linked?.user_id ?? null
   }
 
   try {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as any
-      const customerId = String(session.customer)
-      const subscriptionId = String(session.subscription)
-      const fallbackUserId = session.client_reference_id as string | null
-      const subscription = (await stripe.subscriptions.retrieve(subscriptionId)) as any
+      const userId =
+        (session.client_reference_id as string | null) ||
+        (session.metadata?.supabase_uuid as string | undefined) ||
+        null
 
-      try {
-        const userId = await upsertSubscriptionForCustomer(subscription, customerId, fallbackUserId)
-        if (userId) {
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .update({ subscription_status: 'active' })
-            .eq('id', userId)
-
-          if (profileError) {
-            console.error('Webhook checkout profile update failed:', profileError)
-            throw profileError
-          }
-        }
-      } catch (upsertError) {
-        console.error('Webhook checkout upsert failed:', upsertError)
-        throw upsertError
+      if (userId) {
+        await resolveSubscriptionStatus({
+          userId,
+          userEmail: (session.customer_email as string | null) || null,
+          supabase,
+        })
       }
     }
 
     if (event.type === 'customer.subscription.created') {
       const subscription = event.data.object as any
       const customerId = String(subscription.customer)
-      const fallbackUserId = (subscription.metadata?.supabase_uuid as string | undefined) || null
-      const userId = await upsertSubscriptionForCustomer(subscription, customerId, fallbackUserId)
+      const userId =
+        (subscription.metadata?.supabase_uuid as string | undefined) ||
+        (await findUserIdByCustomer(customerId))
 
       if (userId) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .update({ subscription_status: mapStripeStatusToProfileStatus(subscription.status) })
-          .eq('id', userId)
-
-        if (profileError) {
-          console.error('Webhook subscription.created profile update failed:', profileError)
-          throw profileError
-        }
+        await resolveSubscriptionStatus({
+          userId,
+          userEmail: null,
+          supabase,
+        })
       }
     }
 
     if (event.type === 'customer.subscription.updated') {
       const subscription = event.data.object as any
       const customerId = String(subscription.customer)
-      const fallbackUserId = (subscription.metadata?.supabase_uuid as string | undefined) || null
-      const userId = await upsertSubscriptionForCustomer(subscription, customerId, fallbackUserId)
+      const userId =
+        (subscription.metadata?.supabase_uuid as string | undefined) ||
+        (await findUserIdByCustomer(customerId))
 
       if (userId) {
-        await supabase
-          .from('profiles')
-          .update({ subscription_status: mapStripeStatusToProfileStatus(subscription.status) })
-          .eq('id', userId)
+        await resolveSubscriptionStatus({
+          userId,
+          userEmail: null,
+          supabase,
+        })
       }
     }
 
