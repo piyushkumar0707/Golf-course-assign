@@ -1,9 +1,7 @@
-'use client'
-
-import { useUser } from '@/hooks/useUser'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
 import { ReactNode } from 'react'
+import { getUser } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 
 const navItems = [
   { name: 'Dashboard', href: '/admin' },
@@ -14,15 +12,9 @@ const navItems = [
   { name: 'Reports', href: '/admin/reports' },
 ]
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
-  const { user, role, loading } = useUser()
-  const pathname = usePathname()
-
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>
-  if (role !== 'admin') {
-    window.location.href = '/dashboard'
-    return null
-  }
+export default async function AdminLayout({ children }: { children: ReactNode }) {
+  const { user, role } = await getUser()
+  if (!user || role !== 'admin') redirect('/dashboard')
 
   return (
     <div className="min-h-screen bg-indigo-900 flex flex-col sm:flex-row text-white">
@@ -37,7 +29,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <Link
               key={item.href}
               href={item.href}
-              className={`block px-4 py-3 rounded-md font-bold text-sm tracking-wide ${pathname === item.href ? 'bg-indigo-600 shadow-xl ring-1 ring-white/10' : 'hover:bg-indigo-800 text-indigo-300'}`}
+              className="block px-4 py-3 rounded-md font-bold text-sm tracking-wide hover:bg-indigo-800 text-indigo-300"
             >
               {item.name}
             </Link>

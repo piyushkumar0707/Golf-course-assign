@@ -184,14 +184,17 @@ CREATE POLICY "Admins can write draws" ON draws FOR ALL USING (EXISTS (SELECT 1 
 -- draw_entries: read own; read all admin
 CREATE POLICY "Users can read own entries" ON draw_entries FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Admins can read all entries" ON draw_entries FOR SELECT USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+CREATE POLICY "Admins can insert draw entries" ON draw_entries FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
 
 -- prize_pool: read all; service role writes
 CREATE POLICY "All authenticated can read prize pool" ON prize_pool FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Admins can insert prize pool" ON prize_pool FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
 
 -- winners: read own; read/update all admin
 CREATE POLICY "Users can read own wins" ON winners FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Admins can read all wins" ON winners FOR SELECT USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
 CREATE POLICY "Admins can update all wins" ON winners FOR UPDATE USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+CREATE POLICY "Admins can insert wins" ON winners FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
 
 -- audit_log: none (user/anon); admins read only; service role writes
 CREATE POLICY "Admins can read audit logs" ON audit_log FOR SELECT USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));

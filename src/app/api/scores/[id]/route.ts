@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getUser } from '@/lib/auth'
+import { getAuthenticatedUser } from '@/lib/auth'
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { user } = await getUser()
+  const user = await getAuthenticatedUser()
   if (!user) return new NextResponse('Unauthorized', { status: 401 })
 
   const { score, played_on } = await req.json()
@@ -42,7 +42,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { user } = await getUser()
+  const user = await getAuthenticatedUser()
   if (!user) return new NextResponse('Unauthorized', { status: 401 })
 
   const supabase = await createClient()

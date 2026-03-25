@@ -17,7 +17,7 @@ export default function HomePage() {
             </span>
             <h1 className="text-6xl md:text-8xl font-black text-white tracking-tighter leading-[0.95] mb-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
                Score Points.<br/>
-               <span className="bg-gradient-to-r from-indigo-400 to-pink-500 bg-clip-text text-transparent">Power Progress.</span>
+               <span className="bg-linear-to-r from-indigo-400 to-pink-500 bg-clip-text text-transparent">Power Progress.</span>
             </h1>
             <p className="max-w-xl text-indigo-200/60 text-lg md:text-xl font-medium leading-relaxed mb-12 animate-in fade-in zoom-in duration-1000 delay-300">
                The subscription platform where your monthly golf scores fuel charities worldwide and enter you into life-changing prize draws.
@@ -56,7 +56,7 @@ export default function HomePage() {
          <div className="max-w-7xl mx-auto bg-slate-900 rounded-[3rem] overflow-hidden p-1 lg:p-12 relative">
             <div className="absolute top-0 right-0 w-[50%] h-full bg-indigo-600/10 blur-[120px] rounded-full"></div>
             <div className="relative z-10 flex flex-col lg:flex-row items-center gap-16 p-8 lg:p-0">
-               <div className="lg:w-1/2 aspect-square rounded-[2rem] bg-indigo-500/5 overflow-hidden border border-white/5">
+               <div className="lg:w-1/2 aspect-square rounded-4xl bg-indigo-500/5 overflow-hidden border border-white/5">
                   <div className="w-full h-full flex items-center justify-center text-indigo-200/20 font-black text-4xl uppercase tracking-tighter">Charity Spotlight</div>
                </div>
                <div className="lg:w-1/2 space-y-8">
@@ -88,7 +88,7 @@ export default function HomePage() {
       {/* Social Proof */}
       <section className="py-32 border-t border-slate-100 bg-white">
         <div className="max-w-4xl mx-auto px-6 text-center">
-           <h3 className="text-2xl font-black text-slate-900 mb-8 font-serif italic italic text-center leading-relaxed">"The only thing better than a birdie is knowing your score just funded a clean water well."</h3>
+           <h3 className="text-2xl font-black text-slate-900 mb-8 font-serif italic text-center leading-relaxed">"The only thing better than a birdie is knowing your score just funded a clean water well."</h3>
            <div className="flex flex-col items-center gap-2">
               <div className="w-12 h-12 rounded-full bg-slate-200"></div>
               <p className="font-bold text-slate-900">Marcus Wright</p>

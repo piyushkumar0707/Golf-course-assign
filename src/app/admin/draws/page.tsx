@@ -7,6 +7,8 @@ export default function AdminDrawsPage() {
   const [loading, setLoading] = useState(true)
   const [isSimulating, setIsSimulating] = useState(false)
   const [simulationResult, setSimulationResult] = useState<any>(null)
+   const [message, setMessage] = useState<string | null>(null)
+   const [confirmPublish, setConfirmPublish] = useState(false)
   
   const [drawParams, setDrawParams] = useState({
     month: new Date().getMonth() + 1,
@@ -20,7 +22,7 @@ export default function AdminDrawsPage() {
 
   const fetchDraws = async () => {
     try {
-      const res = await fetch('/api/draws') // Note: this might need common access or admin specific api
+         const res = await fetch('/api/admin/draws')
       if (res.ok) setDraws(await res.json())
     } catch (e) {
       console.error(e)
@@ -32,6 +34,7 @@ export default function AdminDrawsPage() {
   const handleSimulate = async () => {
     setIsSimulating(true)
     setSimulationResult(null)
+      setMessage(null)
     try {
       const res = await fetch('/api/admin/draws/simulate', {
         method: 'POST',
@@ -41,17 +44,23 @@ export default function AdminDrawsPage() {
       if (res.ok) {
         setSimulationResult(await res.json())
       } else {
-        alert(await res.text())
+            setMessage(await res.text())
       }
     } catch (e) {
       console.error(e)
+         setMessage('Failed to run simulation.')
     } finally {
       setIsSimulating(false)
     }
   }
 
   const handlePublish = async () => {
-    if (!confirm('This cannot be undone. Are you SURE?')) return
+      if (!confirmPublish) {
+         setConfirmPublish(true)
+         setMessage('Click publish again to confirm this irreversible action.')
+         return
+      }
+
     try {
       const res = await fetch('/api/admin/draws/publish', {
         method: 'POST',
@@ -59,19 +68,29 @@ export default function AdminDrawsPage() {
         body: JSON.stringify(drawParams)
       })
       if (res.ok) {
-        alert('Draw published successfully!')
+            setMessage('Draw published successfully.')
         setSimulationResult(null)
+            setConfirmPublish(false)
         fetchDraws()
       } else {
-        alert(await res.text())
+            setMessage(await res.text())
       }
     } catch (e) {
       console.error(e)
+         setMessage('Failed to publish draw.')
+      } finally {
+         setConfirmPublish(false)
     }
   }
 
   return (
     <div className="space-y-10 pb-20">
+         {message && (
+            <div className="rounded-xl border border-indigo-400/20 bg-indigo-500/10 p-4 text-sm font-bold text-indigo-200">
+               {message}
+            </div>
+         )}
+
       <div className="flex justify-between items-center bg-indigo-800/20 p-8 rounded-3xl border border-white/5 shadow-2xl">
          <div>
             <h1 className="text-4xl font-black text-white mb-2">Draw Engine Hub</h1>
@@ -93,6 +112,7 @@ export default function AdminDrawsPage() {
                   <select 
                     value={drawParams.month}
                     onChange={(e) => setDrawParams({...drawParams, month: parseInt(e.target.value)})}
+                              aria-label="Select draw month"
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     {[...Array(12)].map((_, i) => (
@@ -107,6 +127,7 @@ export default function AdminDrawsPage() {
                   <select 
                     value={drawParams.year}
                     onChange={(e) => setDrawParams({...drawParams, year: parseInt(e.target.value)})}
+                              aria-label="Select draw year"
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     {[2024, 2025, 2026].map((y) => (
@@ -187,15 +208,47 @@ export default function AdminDrawsPage() {
 
                 <button
                   onClick={handlePublish}
-                  className="w-full bg-gradient-to-r from-green-500 to-emerald-700 py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-2xl shadow-green-900/40 hover:scale-[1.02] active:scale-95 transition-all"
+                           className={`w-full py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-2xl transition-all hover:scale-[1.02] active:scale-95 ${confirmPublish ? 'bg-linear-to-r from-red-500 to-rose-700 shadow-red-900/40' : 'bg-linear-to-r from-green-500 to-emerald-700 shadow-green-900/40'}`}
                 >
-                   Publish Official Draw Results
+                   {confirmPublish ? 'Confirm Publish Draw' : 'Publish Official Draw Results'}
                 </button>
                 <p className="text-center mt-4 text-[10px] font-black text-indigo-400/30 tracking-widest uppercase">Action is irreversible once confirmed</p>
               </div>
             )}
          </div>
       </div>
+
+         <section className="bg-white/5 p-6 rounded-3xl border border-white/5 shadow-2xl">
+            <h2 className="text-xl font-black text-white mb-4">Published and Pending Draws</h2>
+            {loading ? (
+               <p className="text-indigo-300">Loading draws...</p>
+            ) : draws.length === 0 ? (
+               <p className="text-indigo-300">No draws available yet.</p>
+            ) : (
+               <div className="space-y-3">
+                  {draws.map((draw) => (
+                     <a
+                        key={draw.id}
+                        href={`/admin/draws/${draw.id}`}
+                        className="block rounded-xl border border-white/10 bg-black/20 p-4 hover:bg-black/30 transition"
+                     >
+                        <div className="flex items-center justify-between gap-4">
+                           <p className="text-white font-bold">
+                              {new Date(draw.year, draw.month - 1).toLocaleString('default', {
+                                 month: 'long',
+                                 year: 'numeric',
+                              })}{' '}
+                              ({draw.draw_type})
+                           </p>
+                           <span className="text-xs font-black uppercase tracking-wider px-2 py-1 rounded bg-indigo-600/40 text-indigo-200">
+                              {draw.status}
+                           </span>
+                        </div>
+                     </a>
+                  ))}
+               </div>
+            )}
+         </section>
     </div>
   )
 }

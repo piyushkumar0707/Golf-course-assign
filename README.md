@@ -1,5 +1,18 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Golf Charity MVP Assumptions
+
+- Draw eligibility requires exactly 5 scores entered; users with fewer are excluded from that month.
+- Weighted draw tallies global score frequency across active users.
+- Contribution percentage is applied to subscription amount; tax handling is out of MVP scope.
+- Independent donation flow is supported via external Stripe payment links on charity pages.
+- Jackpot carries forward until a tier-5 winner is found.
+- Score `played_on` must be within the last 12 months and not in the future.
+- Admins should avoid hard-deleting users to preserve historical draw integrity.
+- Only one featured charity is intended at a time and should be enforced in admin flows.
+- Proof rejection resets a winner back to awaiting so they can re-submit with a reason.
+- Prize values are calculated and stored in pence/cents-style integer units to avoid float issues.
+
 ## Getting Started
 
 First, run the development server:

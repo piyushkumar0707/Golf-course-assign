@@ -30,7 +30,6 @@ export default async function DrawResultPage({ params }: { params: Promise<{ id:
             <div 
               key={i} 
               className="w-16 h-16 flex items-center justify-center rounded-full bg-indigo-600 text-white text-2xl font-bold animate-bounce shadow-lg"
-              style={{ animationDelay: `${i * 0.2}s` }}
             >
               {n}
             </div>
@@ -49,21 +48,21 @@ export default async function DrawResultPage({ params }: { params: Promise<{ id:
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             <tr>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 py-6">5 Numbers (Jackpot)</td>
+              <td className="px-6 py-6 whitespace-nowrap text-sm font-medium text-gray-900">5 Numbers (Jackpot)</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{pool.winners_tier_5 || 0}</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 {pool.winners_tier_5 > 0 ? `£${(pool.pool_tier_5 / pool.winners_tier_5 / 100).toFixed(2)}` : 'Rolled over'}
               </td>
             </tr>
             <tr>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 py-6">4 Numbers</td>
+              <td className="px-6 py-6 whitespace-nowrap text-sm font-medium text-gray-900">4 Numbers</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{pool.winners_tier_4 || 0}</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 £{pool.winners_tier_4 > 0 ? (pool.pool_tier_4 / pool.winners_tier_4 / 100).toFixed(2) : '0.00'}
               </td>
             </tr>
             <tr>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 py-6">3 Numbers</td>
+              <td className="px-6 py-6 whitespace-nowrap text-sm font-medium text-gray-900">3 Numbers</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{pool.winners_tier_3 || 0}</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 £{pool.winners_tier_3 > 0 ? (pool.pool_tier_3 / pool.winners_tier_3 / 100).toFixed(2) : '0.00'}

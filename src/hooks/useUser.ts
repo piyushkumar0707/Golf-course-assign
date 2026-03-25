@@ -49,6 +49,18 @@ function writeCachedProfile(userId: string, role: string | null, subscriptionSta
   window.localStorage.setItem('gc_profile_cache', JSON.stringify(payload))
 }
 
+function shouldWriteCachedProfile(userId: string, subscriptionStatus: string | null) {
+  const existing = readCachedProfile(userId)
+
+  if (!existing) return true
+  if (subscriptionStatus === 'active') return true
+
+  // Do not overwrite a known-good active cache with potentially stale non-active state.
+  if (existing.subscriptionStatus === 'active' && subscriptionStatus !== 'active') return false
+
+  return true
+}
+
 function clearCachedProfile() {
   if (typeof window === 'undefined') return
   window.sessionStorage.removeItem('gc_profile_cache')
@@ -60,18 +72,29 @@ export function useUser() {
   const [role, setRole] = useState<string | null>(null)
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [recentCheckoutReturn, setRecentCheckoutReturn] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
     let isMounted = true
+    let activeUser: User | null = null
+    const isSubscriptionReturn =
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('sub') === 'updated'
 
-    const applyProfile = async (currentUser: User) => {
-      const cached = readCachedProfile(currentUser.id)
-      if (cached) {
-        if (!isMounted) return
-        setRole(cached.role || 'subscriber')
-        setSubscriptionStatus(cached.subscriptionStatus || 'inactive')
-        return
+    if (isSubscriptionReturn) {
+      setRecentCheckoutReturn(true)
+    }
+
+    const applyProfile = async (currentUser: User, bypassCache = false) => {
+      if (!bypassCache) {
+        const cached = readCachedProfile(currentUser.id)
+        if (cached) {
+          if (!isMounted) return
+          setRole(cached.role || 'subscriber')
+          setSubscriptionStatus(cached.subscriptionStatus || 'inactive')
+          return
+        }
       }
 
       const { data } = await supabase
@@ -80,13 +103,32 @@ export function useUser() {
         .eq('id', currentUser.id)
         .single()
 
+      let canonicalStatus: string | null = null
+      try {
+        const statusRes = await fetch('/api/user/subscription-status', {
+          method: 'GET',
+          cache: 'no-store',
+        })
+        if (statusRes.ok) {
+          const statusData = await statusRes.json()
+          canonicalStatus = statusData?.status || null
+        }
+      } catch {
+        canonicalStatus = null
+      }
+
       if (!isMounted) return
 
       const nextRole = data?.role || 'subscriber'
-      const nextStatus = data?.subscription_status || 'inactive'
+      const nextStatus = canonicalStatus || data?.subscription_status || 'inactive'
       setRole(nextRole)
       setSubscriptionStatus(nextStatus)
-      writeCachedProfile(currentUser.id, nextRole, nextStatus)
+      if (nextStatus === 'active') {
+        setRecentCheckoutReturn(false)
+      }
+      if (shouldWriteCachedProfile(currentUser.id, nextStatus)) {
+        writeCachedProfile(currentUser.id, nextRole, nextStatus)
+      }
     }
 
     const bootstrap = async () => {
@@ -95,6 +137,7 @@ export function useUser() {
       } = await supabase.auth.getSession()
 
       const currentUser = session?.user || null
+      activeUser = currentUser
 
       if (!isMounted) return
 
@@ -102,6 +145,12 @@ export function useUser() {
       setLoading(false)
 
       if (currentUser) {
+        if (isSubscriptionReturn) {
+          // After returning from checkout, force a fresh profile read.
+          await applyProfile(currentUser, true)
+          return
+        }
+
         // Try to read profile from middleware cookie first
         const profileCookie = document.cookie
           .split('; ')
@@ -114,8 +163,13 @@ export function useUser() {
             if (!isMounted) return
             setRole(cachedProfile.role || 'subscriber')
             setSubscriptionStatus(cachedProfile.subscription_status || 'inactive')
-            writeCachedProfile(currentUser.id, cachedProfile.role, cachedProfile.subscription_status)
-            return // Profile loaded from cookie, skip database query
+            if (shouldWriteCachedProfile(currentUser.id, cachedProfile.subscription_status)) {
+              writeCachedProfile(currentUser.id, cachedProfile.role, cachedProfile.subscription_status)
+            }
+
+            // Refresh in background to avoid stale UI after webhook updates.
+            void applyProfile(currentUser, true)
+            return
           } catch (e) {
             // Cookie parse failed, will fall through to database query
           }
@@ -126,6 +180,7 @@ export function useUser() {
       } else {
         setRole(null)
         setSubscriptionStatus(null)
+        setRecentCheckoutReturn(false)
         clearCachedProfile()
       }
     }
@@ -138,6 +193,7 @@ export function useUser() {
         if (event === 'INITIAL_SESSION') return
 
         const currentUser = session?.user || null
+        activeUser = currentUser
         setUser(currentUser)
         setLoading(false)
 
@@ -146,16 +202,50 @@ export function useUser() {
         } else {
           setRole(null)
           setSubscriptionStatus(null)
+          setRecentCheckoutReturn(false)
           clearCachedProfile()
         }
       }
     )
 
+    const refreshProfile = async () => {
+      if (!isMounted || !activeUser) return
+      await applyProfile(activeUser, true)
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshProfile()
+      }
+    }
+
+    const handleFocus = () => {
+      void refreshProfile()
+    }
+
+    const refreshIntervalMs = isSubscriptionReturn ? 8_000 : 15_000
+
+    const refreshInterval = window.setInterval(() => {
+      void refreshProfile()
+    }, refreshIntervalMs)
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+
     return () => {
       isMounted = false
+      window.clearInterval(refreshInterval)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
       authListener.subscription.unsubscribe()
     }
   }, [])
 
-  return { user, role, subscriptionStatus, loading }
+  return {
+    user,
+    role,
+    subscriptionStatus,
+    loading,
+    isSubscriptionSyncing: recentCheckoutReturn && subscriptionStatus !== 'active',
+  }
 }

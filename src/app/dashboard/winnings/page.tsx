@@ -7,6 +7,7 @@ export default function DashboardWinningsPage() {
   const [wins, setWins] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
 
   useEffect(() => {
     fetchWins()
@@ -28,15 +29,16 @@ export default function DashboardWinningsPage() {
     if (!file) return
 
     if (!['image/jpeg', 'image/png', 'application/pdf'].includes(file.type)) {
-      alert('Invalid file type (JPG, PNG, PDF only)')
+      setMessage('Invalid file type (JPG, PNG, PDF only).')
       return
     }
     if (file.size > 5 * 1024 * 1024) {
-      alert('File too large (Max 5MB)')
+      setMessage('File too large (Max 5MB).')
       return
     }
 
     setUploading(winnerId)
+    setMessage(null)
     try {
       // 1. Upload to Supabase Storage
       const { createClient } = await import('@/lib/supabase/browser')
@@ -61,13 +63,13 @@ export default function DashboardWinningsPage() {
       })
 
       if (res.ok) {
-        alert('Proof submitted! We will review it shortly.')
+        setMessage('Proof submitted. We will review it shortly.')
         fetchWins()
       } else {
-        alert(await res.text())
+        setMessage(await res.text())
       }
     } catch (e: any) {
-      alert('Upload failed: ' + e.message)
+      setMessage('Upload failed: ' + e.message)
     } finally {
       setUploading(null)
     }
@@ -77,6 +79,12 @@ export default function DashboardWinningsPage() {
 
   return (
     <div className="max-w-6xl">
+      {message && (
+        <div className="mb-6 rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm font-semibold text-indigo-700">
+          {message}
+        </div>
+      )}
+
       <h1 className="text-3xl font-bold text-gray-900 mb-2">My Winnings</h1>
       <p className="text-gray-500 mb-10 text-lg">Tracks your prize matched across all draws you have entered.</p>
 
@@ -106,7 +114,7 @@ export default function DashboardWinningsPage() {
                     <td className="px-6 py-5 whitespace-nowrap text-sm text-gray-600 font-medium">
                       Tier {win.tier} ({win.tier}-Number Match)
                     </td>
-                    <td className="px-6 py-5 whitespace-nowrap text-sm text-gray-900 font-extrabold text-lg">
+                    <td className="px-6 py-5 whitespace-nowrap text-lg text-gray-900 font-extrabold">
                       £{(win.prize_amount / 100).toFixed(2)}
                     </td>
                     <td className="px-6 py-5 whitespace-nowrap">
@@ -144,7 +152,7 @@ export default function DashboardWinningsPage() {
                                 >
                                   {uploading === win.id ? 'Uploading...' : 'Upload Proof'}
                                 </label>
-                                {win.rejection_reason && <p className="text-[10px] text-red-500 mt-1 max-w-[150px] leading-tight font-medium">Rejected: {win.rejection_reason}</p>}
+                                {win.rejection_reason && <p className="text-[10px] text-red-500 mt-1 max-w-40 leading-tight font-medium">Rejected: {win.rejection_reason}</p>}
                              </div>
                            )}
                         </div>

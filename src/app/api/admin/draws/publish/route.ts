@@ -18,17 +18,26 @@ export async function POST(req: Request) {
 
   const eligibleUsers = []
   const allScores: number[] = []
+  const profileIds = profiles.map((p) => p.id)
+
+  const { data: scoreRows } = await supabase
+    .from('scores')
+    .select('user_id, score, played_on')
+    .in('user_id', profileIds)
+    .order('played_on', { ascending: false })
+
+  const scoresByUser = new Map<string, number[]>()
+  for (const row of scoreRows || []) {
+    const current = scoresByUser.get(row.user_id) || []
+    if (current.length < 5) {
+      current.push(row.score)
+      scoresByUser.set(row.user_id, current)
+    }
+  }
 
   for (const profile of profiles) {
-    const { data: userScores } = await supabase
-      .from('scores')
-      .select('score')
-      .eq('user_id', profile.id)
-      .order('played_on', { ascending: false })
-      .limit(5)
-
-    if (userScores && userScores.length === 5) {
-      const uScores = userScores.map(s => s.score)
+    const uScores = scoresByUser.get(profile.id) || []
+    if (uScores.length === 5) {
       eligibleUsers.push({ id: profile.id, name: profile.full_name, scores: uScores })
       allScores.push(...uScores)
     }

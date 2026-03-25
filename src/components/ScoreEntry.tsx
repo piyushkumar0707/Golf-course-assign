@@ -18,6 +18,8 @@ export default function ScoreEntry() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editScore, setEditScore] = useState('')
   const [editDate, setEditDate] = useState('')
+  const [message, setMessage] = useState<string | null>(null)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
 
   useEffect(() => {
     fetchScores()
@@ -54,6 +56,7 @@ export default function ScoreEntry() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setMessage(null)
 
     if (!validateScore(scoreInput)) {
       setError('Score must be between 1 and 45')
@@ -75,6 +78,7 @@ export default function ScoreEntry() {
       if (res.ok) {
         setScoreInput('')
         setDateInput('')
+        setMessage('Score saved successfully.')
         fetchScores()
       } else {
         setError(await res.text())
@@ -93,8 +97,10 @@ export default function ScoreEntry() {
   }
 
   const handleUpdate = async (id: string) => {
+    setError(null)
+    setMessage(null)
     if (!validateScore(editScore) || !validateDate(editDate)) {
-      alert('Invalid score or date')
+      setError('Invalid score or date')
       return
     }
 
@@ -106,24 +112,30 @@ export default function ScoreEntry() {
       })
       if (res.ok) {
         setEditingId(null)
+        setMessage('Score updated successfully.')
         fetchScores()
       } else {
-        alert(await res.text())
+        setError(await res.text())
       }
     } catch (e) {
-      alert('Failed to update')
+      setError('Failed to update')
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this score?')) return
+    setError(null)
+    setMessage(null)
     try {
       const res = await fetch(`/api/scores/${id}`, { method: 'DELETE' })
       if (res.ok) {
+        setDeleteConfirmId(null)
+        setMessage('Score deleted successfully.')
         fetchScores()
+      } else {
+        setError(await res.text())
       }
     } catch (e) {
-      console.error(e)
+      setError('Failed to delete score')
     }
   }
 
@@ -140,8 +152,9 @@ export default function ScoreEntry() {
 
       <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-4 items-start mb-8">
         <div className="flex-1 w-full">
-          <label className="block text-sm font-medium text-gray-700">Stableford Score (1-45)</label>
+          <label htmlFor="score-input" className="block text-sm font-medium text-gray-700">Stableford Score (1-45)</label>
           <input
+            id="score-input"
             type="number"
             min="1" max="45"
             required
@@ -151,8 +164,9 @@ export default function ScoreEntry() {
           />
         </div>
         <div className="flex-1 w-full">
-          <label className="block text-sm font-medium text-gray-700">Date Played</label>
+          <label htmlFor="date-input" className="block text-sm font-medium text-gray-700">Date Played</label>
           <input
+            id="date-input"
             type="date"
             required
             value={dateInput}
@@ -171,6 +185,7 @@ export default function ScoreEntry() {
         </div>
       </form>
       {error && <div className="text-red-600 text-sm mb-4">{error}</div>}
+      {message && <div className="text-green-700 text-sm mb-4">{message}</div>}
 
       <h4 className="font-medium text-gray-900 mb-2">Recent Scores</h4>
       {scores.length === 0 ? (
@@ -185,12 +200,14 @@ export default function ScoreEntry() {
                     type="number"
                     value={editScore}
                     onChange={e => setEditScore(e.target.value)}
+                    aria-label="Edit score"
                     className="border border-gray-300 rounded p-1 w-20 text-black"
                   />
                   <input
                     type="date"
                     value={editDate}
                     onChange={e => setEditDate(e.target.value)}
+                    aria-label="Edit played date"
                     className="border border-gray-300 rounded p-1 text-black"
                   />
                   <button onClick={() => handleUpdate(s.id)} className="bg-green-100 text-green-700 px-3 py-1 rounded hover:bg-green-200 text-sm">Save</button>
@@ -206,7 +223,14 @@ export default function ScoreEntry() {
                     <button onClick={() => handleEditClick(s)} className="text-indigo-600 hover:text-indigo-900 text-sm inline-flex items-center">
                       Edit
                     </button>
-                    <button onClick={() => handleDelete(s.id)} className="text-red-600 hover:text-red-900 text-sm">Delete</button>
+                    {deleteConfirmId === s.id ? (
+                      <>
+                        <button onClick={() => handleDelete(s.id)} className="text-red-700 hover:text-red-900 text-sm">Confirm Delete</button>
+                        <button onClick={() => setDeleteConfirmId(null)} className="text-gray-600 hover:text-gray-800 text-sm">Cancel</button>
+                      </>
+                    ) : (
+                      <button onClick={() => setDeleteConfirmId(s.id)} className="text-red-600 hover:text-red-900 text-sm">Delete</button>
+                    )}
                   </div>
                 </>
               )}

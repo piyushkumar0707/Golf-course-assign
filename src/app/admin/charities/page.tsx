@@ -80,7 +80,7 @@ export default function AdminCharitiesPage() {
               <tr key={c.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-6 py-4">
                   <div className="flex items-center">
-                    <div className="h-12 w-12 flex-shrink-0 bg-indigo-100 rounded-lg flex items-center justify-center text-xl">
+                    <div className="h-12 w-12 shrink-0 bg-indigo-100 rounded-lg flex items-center justify-center text-xl">
                       🏛️
                     </div>
                     <div className="ml-4">

@@ -1,6 +1,24 @@
 import { createClient } from './supabase/server'
 import { User } from '@supabase/supabase-js'
 
+export async function getAuthenticatedUser(): Promise<User | null> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser()
+
+    if (error || !user) {
+      return null
+    }
+
+    return user
+  } catch {
+    return null
+  }
+}
+
 export async function getUser(): Promise<{ user: User | null; role: string | null; subscriptionStatus: string | null }> {
   try {
     const supabase = await createClient()

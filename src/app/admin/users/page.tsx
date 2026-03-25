@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<any[]>([])
@@ -71,7 +72,12 @@ export default function AdminUsersPage() {
                     </span>
                   </td>
                   <td className="px-6 py-5 whitespace-nowrap text-right">
-                    <button className="text-xs font-bold text-indigo-400 hover:text-white uppercase transition-colors">View Details</button>
+                    <Link
+                      href={`/admin/users/${u.id}`}
+                      className="text-xs font-bold text-indigo-400 hover:text-white uppercase transition-colors"
+                    >
+                      View Details
+                    </Link>
                   </td>
                 </tr>
               ))}

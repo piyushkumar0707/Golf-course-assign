@@ -55,7 +55,7 @@ function ProcessStep({ step, title, desc, imageAlt, reversed = false }: { step: 
             <p className="text-slate-600 font-medium text-lg leading-relaxed">{desc}</p>
          </div>
          <div className="lg:w-1/2 aspect-square bg-white rounded-[3rem] shadow-xl border border-slate-100 ring-1 ring-slate-900/5 flex items-center justify-center p-8 transition-transform hover:scale-105">
-            <div className="w-full h-full bg-slate-50 rounded-[2rem] border border-slate-100 flex flex-col items-center justify-center text-center p-8 gap-4 overflow-hidden relative">
+            <div className="w-full h-full bg-slate-50 rounded-4xl border border-slate-100 flex flex-col items-center justify-center text-center p-8 gap-4 overflow-hidden relative">
                <div className="absolute top-0 right-0 p-4 font-black text-[10px] text-slate-200 tracking-widest uppercase">Visualization Preview</div>
                <span className="text-4xl filter grayscale opacity-20">📊</span>
                <p className="text-slate-300 font-bold uppercase text-xs tracking-widest">{imageAlt}</p>

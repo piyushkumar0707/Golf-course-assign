@@ -7,6 +7,8 @@ export default function AdminWinnersPage() {
   const [winners, setWinners] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending') // pending, approved, awaiting, rejected
+  const [message, setMessage] = useState<string | null>(null)
+  const [rejectionReasons, setRejectionReasons] = useState<Record<string, string>>({})
 
   useEffect(() => {
     fetchWinners()
@@ -31,12 +33,25 @@ export default function AdminWinnersPage() {
         body: JSON.stringify(updates)
       })
       if (res.ok) {
-        alert('Winner updated successfully!')
+        setMessage('Winner updated successfully.')
         fetchWinners()
+      } else {
+        setMessage(await res.text())
       }
     } catch (e) {
       console.error(e)
+      setMessage('Failed to update winner.')
     }
+  }
+
+  const rejectWinner = async (id: string) => {
+    const reason = rejectionReasons[id]?.trim()
+    if (!reason) {
+      setMessage('Please enter a rejection reason before rejecting.')
+      return
+    }
+
+    await handleUpdate(id, { proof_status: 'rejected', rejection_reason: reason })
   }
 
   const filteredWinners = filter === 'all' ? winners : winners.filter(w => w.proof_status === filter || w.payment_status === filter)
@@ -45,6 +60,12 @@ export default function AdminWinnersPage() {
 
   return (
     <div className="space-y-8 pb-10">
+      {message && (
+        <div className="rounded-xl border border-indigo-400/20 bg-indigo-500/10 p-4 text-sm font-bold text-indigo-200">
+          {message}
+        </div>
+      )}
+
       <div className="flex justify-between items-center bg-indigo-800/20 p-8 rounded-3xl border border-white/5 shadow-2xl">
          <div>
             <h1 className="text-4xl font-black text-white mb-2">Winner Verification</h1>
@@ -75,7 +96,7 @@ export default function AdminWinnersPage() {
                       </div>
                       <div>
                         <h3 className="text-xl font-black text-white">{win.profiles?.full_name || 'Subscriber'}</h3>
-                        <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">{win.profiles?.auth_users?.email}</p>
+                        <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">{win.profiles?.email || 'No email found'}</p>
                       </div>
                    </div>
                    <div className="flex flex-col sm:flex-row gap-6 mt-6">
@@ -103,7 +124,16 @@ export default function AdminWinnersPage() {
                         <a href={win.proof_url} target="_blank" className="bg-indigo-600 border border-indigo-400/50 py-3 rounded-xl text-center text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-900/40 hover:bg-indigo-500 transition-all">View Proof Attachment</a>
                         
                         {win.proof_status === 'pending' && (
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-2">
+                             <input
+                               value={rejectionReasons[win.id] || ''}
+                               onChange={(e) =>
+                                 setRejectionReasons((prev) => ({ ...prev, [win.id]: e.target.value }))
+                               }
+                               placeholder="Rejection reason"
+                               className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-white placeholder:text-white/40"
+                             />
+                             <div className="grid grid-cols-2 gap-2">
                              <button
                                onClick={() => handleUpdate(win.id, { proof_status: 'approved' })}
                                className="bg-green-600/20 border border-green-500/30 text-green-500 py-3 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-green-500/30 transition-all"
@@ -111,14 +141,12 @@ export default function AdminWinnersPage() {
                                Approve
                              </button>
                              <button
-                               onClick={() => {
-                                 const reason = prompt('Rejection reason:')
-                                 if (reason) handleUpdate(win.id, { proof_status: 'rejected', rejection_reason: reason })
-                               }}
+                               onClick={() => rejectWinner(win.id)}
                                className="bg-red-600/20 border border-red-500/30 text-red-500 py-3 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-red-500/30 transition-all"
                              >
                                Reject
                              </button>
+                             </div>
                           </div>
                         )}
                         

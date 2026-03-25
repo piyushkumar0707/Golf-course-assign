@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getUser } from '@/lib/auth'
+import { getAuthenticatedUser } from '@/lib/auth'
 
 export async function GET() {
-  const { user } = await getUser()
+  const user = await getAuthenticatedUser()
   if (!user) return new NextResponse('Unauthorized', { status: 401 })
 
   const supabase = await createClient()
@@ -12,12 +12,13 @@ export async function GET() {
     .select('*')
     .eq('user_id', user.id)
     .order('played_on', { ascending: false })
+    .limit(5)
 
   return NextResponse.json(scores || [])
 }
 
 export async function POST(req: Request) {
-  const { user } = await getUser()
+  const user = await getAuthenticatedUser()
   if (!user) return new NextResponse('Unauthorized', { status: 401 })
 
   const { score, played_on } = await req.json()
@@ -38,6 +39,29 @@ export async function POST(req: Request) {
   }
 
   const supabase = await createClient()
+
+  const { data: existingScores, error: existingError } = await supabase
+    .from('scores')
+    .select('id')
+    .eq('user_id', user.id)
+    .order('played_on', { ascending: true })
+    .order('created_at', { ascending: true })
+
+  if (existingError) return new NextResponse(existingError.message, { status: 500 })
+
+  if (existingScores && existingScores.length >= 5) {
+    const oldestId = existingScores[0]?.id
+    if (oldestId) {
+      const { error: deleteError } = await supabase
+        .from('scores')
+        .delete()
+        .eq('id', oldestId)
+        .eq('user_id', user.id)
+
+      if (deleteError) return new NextResponse(deleteError.message, { status: 500 })
+    }
+  }
+
   const { data, error } = await supabase
     .from('scores')
     .insert({

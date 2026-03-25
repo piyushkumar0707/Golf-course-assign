@@ -1,28 +1,44 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 
 export default function SubscribePage() {
   const [loading, setLoading] = useState<string | null>(null)
-  const router = useRouter()
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   
   const handleSubscribe = async (plan: 'monthly' | 'yearly') => {
     setLoading(plan)
+    setErrorMessage(null)
+
     try {
       const res = await fetch('/api/stripe/create-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan })
       })
-      const data = await res.json()
+
+      const contentType = res.headers.get('content-type') || ''
+      const data = contentType.includes('application/json')
+        ? await res.json()
+        : { error: await res.text() }
+
+      if (!res.ok) {
+        setErrorMessage(data?.error || 'Unable to start checkout. Please try again.')
+        return
+      }
+
       if (data.url) {
         window.location.href = data.url
+        return
       }
+
+      setErrorMessage('Checkout session URL missing. Please try again.')
     } catch (e) {
       console.error(e)
+      setErrorMessage('Something went wrong while starting checkout. Please try again.')
+    } finally {
+      setLoading(null)
     }
-    setLoading(null)
   }
 
   return (
@@ -34,6 +50,12 @@ export default function SubscribePage() {
         <p className="mt-4 text-xl text-gray-500">
           Subscribe to enter the monthly draws and support your favorite charity.
         </p>
+
+        {errorMessage && (
+          <div className="mt-4 mx-auto max-w-2xl rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            {errorMessage}
+          </div>
+        )}
       </div>
 
       <div className="mt-12 space-y-4 sm:mt-16 sm:space-y-0 sm:grid sm:grid-cols-2 sm:gap-6 lg:max-w-4xl lg:mx-auto xl:max-w-none xl:mx-0 xl:grid-cols-2">

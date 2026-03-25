@@ -9,6 +9,7 @@ export default function DashboardCharityPage() {
   const [saving, setSaving] = useState(false)
   const [newPct, setNewPct] = useState(10)
   const [selectedId, setSelectedId] = useState('')
+  const [message, setMessage] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -17,6 +18,18 @@ export default function DashboardCharityPage() {
           fetch('/api/user/charity'),
           fetch('/api/charities')
         ])
+
+        if (uRes.status === 401) {
+          if (typeof window !== 'undefined') {
+            window.location.assign('/login')
+          }
+          return
+        }
+
+        if (!uRes.ok || !aRes.ok) {
+          throw new Error('Failed to load charity data')
+        }
+
         const uData = await uRes.json()
         const aData = await aRes.json()
         
@@ -39,6 +52,7 @@ export default function DashboardCharityPage() {
     e.preventDefault()
     if (!selectedId) return
     setSaving(true)
+    setMessage(null)
     try {
       const res = await fetch('/api/user/charity', {
         method: 'POST',
@@ -48,10 +62,13 @@ export default function DashboardCharityPage() {
       if (res.ok) {
         const updated = await res.json()
         setUserCharity(updated)
-        alert('Impact updated successfully!')
+        setMessage('Impact updated successfully.')
+      } else {
+        setMessage(await res.text())
       }
     } catch (e) {
       console.error(e)
+      setMessage('Failed to update impact settings.')
     } finally {
       setSaving(false)
     }
@@ -61,6 +78,12 @@ export default function DashboardCharityPage() {
 
   return (
     <div className="max-w-5xl">
+      {message && (
+        <div className="mb-6 rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm font-semibold text-indigo-700">
+          {message}
+        </div>
+      )}
+
       <h1 className="text-3xl font-bold text-gray-900 mb-2">My Charity Impact</h1>
       <p className="text-gray-500 mb-10 text-lg">You are currently contributing <span className="text-indigo-600 font-bold">{userCharity?.contribution_pct || 10}%</span> of your subscription to <span className="text-indigo-600 font-bold">{userCharity?.charities?.name || 'an amazing cause'}</span>.</p>
 
@@ -70,7 +93,7 @@ export default function DashboardCharityPage() {
               <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-3">
                  <span className="p-2 bg-indigo-50 rounded text-indigo-600">🏛️</span> Select Charity
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-[400px] overflow-y-auto pr-4 scrollbar-thin scrollbar-thumb-indigo-200">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-100 overflow-y-auto pr-4 scrollbar-thin scrollbar-thumb-indigo-200">
                 {allCharities.map((c) => (
                   <label key={c.id} className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition-all ${selectedId === c.id ? 'border-indigo-600 bg-indigo-50 shadow-inner' : 'border-gray-200 hover:border-gray-300'}`}>
                     <input
@@ -102,7 +125,9 @@ export default function DashboardCharityPage() {
                    <span className="text-indigo-600 text-lg">{newPct}%</span>
                    <span>100%</span>
                 </div>
+                <label htmlFor="contribution-range" className="sr-only">Contribution percentage</label>
                 <input
+                  id="contribution-range"
                   type="range"
                   min="10"
                   max="100"
