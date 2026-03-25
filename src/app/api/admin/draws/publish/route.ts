@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/auth'
 import { randomDraw, weightedDraw, matchTier } from '@/lib/draw-engine'
 import { calculatePool, splitPrize, shouldCarryJackpot } from '@/lib/prize-pool'
+import { sendDrawResults, sendWinnerNotification } from '@/lib/mailer'
 
 export async function POST(req: Request) {
   const { role } = await getUser()
@@ -12,7 +13,7 @@ export async function POST(req: Request) {
   const supabase = await createClient()
 
   // 1. Get eligible users
-  const { data: profiles } = await supabase.from('profiles').select('id').eq('subscription_status', 'active')
+  const { data: profiles } = await supabase.from('profiles').select('id, full_name').eq('subscription_status', 'active')
   if (!profiles) return new NextResponse('No active subscribers', { status: 400 })
 
   const eligibleUsers = []
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
 
     if (userScores && userScores.length === 5) {
       const uScores = userScores.map(s => s.score)
-      eligibleUsers.push({ id: profile.id, scores: uScores })
+      eligibleUsers.push({ id: profile.id, name: profile.full_name, scores: uScores })
       allScores.push(...uScores)
     }
   }
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
   for (const user of eligibleUsers) {
     const tier = matchTier(user.scores, winningNumbers)
     if (tier) {
-      matches[tier]++
+      matches[tier as 3|4|5]++
       userMatches.push({ userId: user.id, tier, scores: user.scores })
     }
   }
@@ -69,7 +70,6 @@ export async function POST(req: Request) {
   const carryOut = shouldCarryJackpot(matches[5]) ? pools.tier5 : 0
 
   // 5. Save to DB
-  // Draw
   const { data: draw, error: drawError } = await supabase.from('draws').insert({
     month,
     year,
@@ -82,7 +82,6 @@ export async function POST(req: Request) {
 
   if (drawError) return new NextResponse(`Error: ${drawError.message}`, { status: 500 })
 
-  // Prize Pool
   await supabase.from('prize_pool').insert({
     draw_id: draw.id,
     total_pool: pools.totalPool,
@@ -105,7 +104,7 @@ export async function POST(req: Request) {
     })
   }
 
-  // Winners
+  // Winners & Notifications
   for (const match of userMatches) {
     await supabase.from('winners').insert({
       draw_id: draw.id,
@@ -113,7 +112,28 @@ export async function POST(req: Request) {
       tier: match.tier,
       prize_amount: prizes[match.tier as 3|4|5]
     })
-    // // TODO: send email to winner
+
+    // Notify winner via email service
+    const { data: userData } = await supabase.auth.admin.getUserById(match.userId)
+    if (userData.user?.email) {
+      await sendWinnerNotification(userData.user.email, {
+        tier: match.tier,
+        prizeAmount: prizes[match.tier as 3|4|5],
+        drawMonth: `${month}/${year}`
+      })
+    }
+  }
+
+  // Notify all participants of results
+  for (const participant of eligibleUsers) {
+    const { data: userData } = await supabase.auth.admin.getUserById(participant.id)
+    if (userData.user?.email) {
+      await sendDrawResults(userData.user.email, {
+        month: `${month}/${year}`,
+        winningNumbers,
+        userScores: participant.scores
+      })
+    }
   }
 
   return NextResponse.json(draw)
