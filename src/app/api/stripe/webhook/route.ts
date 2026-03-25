@@ -56,6 +56,36 @@ export async function POST(req: Request) {
       }
     }
 
+    if (event.type === 'customer.subscription.created') {
+      const subscription = event.data.object as any
+      const customerId = subscription.customer
+      const periodEnd = typeof subscription.current_period_end === 'number' 
+        ? subscription.current_period_end 
+        : (subscription.current_period_end as any)?.getTime?.() / 1000 || Math.floor(Date.now() / 1000)
+      
+      // Find user by customer ID
+      const { data: subData } = await supabase
+        .from('subscriptions')
+        .select('user_id')
+        .eq('stripe_customer_id', customerId)
+        .single()
+
+      if (subData?.user_id) {
+        // Subscription already exists, just update it
+        await supabase.from('subscriptions').update({
+          stripe_subscription_id: subscription.id,
+          status: subscription.status,
+          plan: subscription.items.data[0].price.id === process.env.STRIPE_PRICE_MONTHLY ? 'monthly' : 'yearly',
+          current_period_end: new Date(periodEnd * 1000).toISOString()
+        }).eq('stripe_customer_id', customerId)
+
+        await supabase
+          .from('profiles')
+          .update({ subscription_status: mapStripeStatusToProfileStatus(subscription.status) })
+          .eq('id', subData.user_id)
+      }
+    }
+
     if (event.type === 'customer.subscription.updated') {
       const subscription = event.data.object as any
       const periodEnd = typeof subscription.current_period_end === 'number' 
