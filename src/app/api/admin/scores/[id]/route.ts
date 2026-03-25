@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/auth'
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const { role, user } = await getUser()
   if (!user || role !== 'admin') {
     return new NextResponse('Unauthorized', { status: 401 })
@@ -16,12 +17,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const supabase = await createClient()
 
   // get old value for audit logging
-  const { data: oldData } = await supabase.from('scores').select('*').eq('id', params.id).single()
+  const { data: oldData } = await supabase.from('scores').select('*').eq('id', id).single()
 
   const { data, error } = await supabase
     .from('scores')
     .update({ score: scoreNum, played_on })
-    .eq('id', params.id)
+    .eq('id', id)
     .select()
     .single()
 
@@ -32,7 +33,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     admin_id: user.id,
     action: 'update_score',
     target_table: 'scores',
-    target_id: params.id,
+    target_id: id,
     old_value: oldData,
     new_value: data,
   })

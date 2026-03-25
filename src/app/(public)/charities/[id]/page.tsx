@@ -2,12 +2,13 @@ import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 
-export default async function CharityProfilePage({ params }: { params: { id: string } }) {
+export default async function CharityProfilePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const supabase = await createClient()
   const { data: charity } = await supabase
     .from('charities')
     .select('*')
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('is_active', true)
     .single()
 

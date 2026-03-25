@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/auth'
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const { role } = await getUser()
   if (role !== 'admin') return new NextResponse('Unauthorized', { status: 401 })
 
@@ -16,7 +17,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       payment_status,
       rejection_reason,
     })
-    .eq('id', params.id)
+    .eq('id', id)
     .select()
     .single()
 

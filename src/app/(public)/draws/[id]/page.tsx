@@ -1,13 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 
-export default async function DrawResultPage({ params }: { params: { id: string } }) {
+export default async function DrawResultPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const supabase = await createClient()
   
   const { data: draw } = await supabase
     .from('draws')
     .select('*, prize_pool(*)')
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   if (!draw || draw.status !== 'published') return notFound()

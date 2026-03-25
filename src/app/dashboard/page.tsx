@@ -12,11 +12,10 @@ export default function DashboardOverview() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [subRes, scoreRes, charityRes, winRes] = await Promise.all([
-          fetch('/api/stripe/create-portal', { method: 'POST' }).catch(() => null), // Hack to check if we can get portal url
+        const [scoreRes, charityRes, winRes] = await Promise.all([
           fetch('/api/scores'),
           fetch('/api/user/charity'),
-          fetch('/api/winners'), // Note: this needs a /api/winners/route.ts
+          fetch('/api/winners'),
         ])
         
         const scores = await scoreRes?.json() || []
