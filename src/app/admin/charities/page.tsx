@@ -1,20 +1,20 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import Image from 'next/image'
+import { useState, useEffect, useRef } from 'react'
+
+interface Charity {
+  id: string
+  name: string
+  description: string
+  is_featured: boolean
+  is_active: boolean
+}
 
 export default function AdminCharitiesPage() {
-  const [charities, setCharities] = useState<any[]>([])
+  const [charities, setCharities] = useState<Charity[]>([])
   const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
-  const [editing, setEditing] = useState<any>(null)
-
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    is_featured: false,
-    is_active: true
-  })
+  const [selectedCharity, setSelectedCharity] = useState<Charity | null | undefined>(undefined)
+  const formOpen = selectedCharity !== undefined
 
   useEffect(() => {
     fetchCharities()
@@ -22,33 +22,36 @@ export default function AdminCharitiesPage() {
 
   const fetchCharities = async () => {
     const res = await fetch('/api/admin/charities')
-    if (res.ok) {
-      const data = await res.json()
-      setCharities(data)
-    }
+    if (res.ok) setCharities(await res.json())
     setLoading(false)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    const method = editing ? 'PATCH' : 'POST'
-    const url = editing ? `/api/admin/charities/${editing.id}` : '/api/admin/charities'
-
+    const fd = new FormData(e.currentTarget)
+    const data = {
+      name: fd.get('name') as string,
+      description: fd.get('description') as string,
+      is_featured: fd.get('is_featured') === 'true',
+      is_active: fd.get('is_active') === 'true',
+    }
+    const isEditing = selectedCharity !== null && selectedCharity !== undefined
+    const method = isEditing ? 'PATCH' : 'POST'
+    const url = isEditing
+      ? `/api/admin/charities/${selectedCharity.id}`
+      : '/api/admin/charities'
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData)
+      body: JSON.stringify(data),
     })
-
     if (res.ok) {
-      fetchCharities()
-      setShowForm(false)
-      setEditing(null)
-      setFormData({ name: '', description: '', is_featured: false, is_active: true })
+      await fetchCharities()
+      setSelectedCharity(undefined)
     }
   }
 
-  if (loading) return <div className="p-8">Loading charities...</div>
+  if (loading) return <div className="p-8">Loading charities…</div>
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -58,7 +61,7 @@ export default function AdminCharitiesPage() {
           <p className="text-gray-500 mt-1">Manage partner charities and their impact levels.</p>
         </div>
         <button
-          onClick={() => setShowForm(true)}
+          onClick={() => setSelectedCharity(null)}
           className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-all hover:scale-105 flex items-center gap-2"
         >
           <span>➕</span> Add New Charity
@@ -80,9 +83,7 @@ export default function AdminCharitiesPage() {
               <tr key={c.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-6 py-4">
                   <div className="flex items-center">
-                    <div className="h-12 w-12 shrink-0 bg-indigo-100 rounded-lg flex items-center justify-center text-xl">
-                      🏛️
-                    </div>
+                    <div className="h-12 w-12 shrink-0 bg-indigo-100 rounded-lg flex items-center justify-center text-xl">🏛️</div>
                     <div className="ml-4">
                       <div className="text-sm font-bold text-gray-900">{c.name}</div>
                       <div className="text-xs text-gray-500 max-w-xs truncate">{c.description}</div>
@@ -95,21 +96,12 @@ export default function AdminCharitiesPage() {
                   </span>
                 </td>
                 <td className="px-6 py-4">
-                  {c.is_featured ? (
-                    <span className="text-yellow-500 text-xl" title="Featured">⭐</span>
-                  ) : (
-                    <span className="text-gray-300">No</span>
-                  )}
+                  {c.is_featured
+                    ? <span className="text-yellow-500 text-xl">⭐</span>
+                    : <span className="text-gray-300">No</span>}
                 </td>
                 <td className="px-6 py-4 text-right text-sm font-medium">
-                  <button
-                    onClick={() => {
-                      setEditing(c)
-                      setFormData({ name: c.name, description: c.description, is_featured: c.is_featured, is_active: c.is_active })
-                      setShowForm(true)
-                    }}
-                    className="text-indigo-600 hover:text-indigo-900 font-bold mr-4"
-                  >
+                  <button onClick={() => setSelectedCharity(c)} className="text-indigo-600 hover:text-indigo-900 font-bold mr-4">
                     Edit
                   </button>
                 </td>
@@ -119,67 +111,90 @@ export default function AdminCharitiesPage() {
         </table>
       </div>
 
-      {showForm && (
+      {/* Modal – key forces full DOM remount when selected charity changes */}
+      {formOpen && (
         <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-10 overflow-hidden relative">
-            <h2 className="text-2xl font-bold text-gray-900 mb-8 flex items-center gap-3">
-              {editing ? '📝 Edit Charity' : '✨ Add New Charity'}
+          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-10">
+            <h2 className="text-2xl font-bold text-gray-900 mb-8">
+              {selectedCharity ? '📝 Edit Charity' : '✨ Add New Charity'}
             </h2>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            {/*
+              Native HTML form with defaultValue — no React state for fields.
+              defaultValue is set once on mount so it's guaranteed to reflect selectedCharity at render time.
+              key forces this form element to fully remount (new DOM node) on every new selection.
+            */}
+            <form
+              key={selectedCharity?.id ?? 'new'}
+              onSubmit={handleSave}
+              className="space-y-6"
+            >
+              {/* Hidden booleans submitted as strings */}
+              <input type="hidden" name="is_featured" value={String(selectedCharity?.is_featured ?? false)} />
+              <input type="hidden" name="is_active" value={String(selectedCharity?.is_active ?? true)} />
+
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-tight">Charity Name</label>
                 <input
                   type="text"
+                  name="name"
                   required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  defaultValue={selectedCharity?.name ?? ''}
                   className="w-full px-5 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-600 focus:border-transparent transition-all outline-none"
                   placeholder="e.g. Save the Fairways"
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-tight">Description</label>
                 <textarea
+                  name="description"
                   required
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  defaultValue={selectedCharity?.description ?? ''}
                   className="w-full px-5 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-600 focus:border-transparent transition-all outline-none h-32 resize-none"
                   placeholder="Tell the story of their impact..."
                 />
               </div>
+
               <div className="flex items-center gap-8 py-2">
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={formData.is_featured}
-                    onChange={(e) => setFormData({ ...formData, is_featured: e.target.checked })}
-                    className="h-5 w-5 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                    defaultChecked={selectedCharity?.is_featured ?? false}
+                    onChange={(e) => {
+                      const hidden = e.currentTarget.form?.querySelector<HTMLInputElement>('input[name="is_featured"]')
+                      if (hidden) hidden.value = String(e.currentTarget.checked)
+                    }}
+                    className="h-5 w-5 rounded text-indigo-600 border-gray-300"
                   />
                   <span className="text-sm font-bold text-gray-700 uppercase tracking-tight">Featured</span>
                 </label>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={formData.is_active}
-                    onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                    className="h-5 w-5 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                    defaultChecked={selectedCharity?.is_active ?? true}
+                    onChange={(e) => {
+                      const hidden = e.currentTarget.form?.querySelector<HTMLInputElement>('input[name="is_active"]')
+                      if (hidden) hidden.value = String(e.currentTarget.checked)
+                    }}
+                    className="h-5 w-5 rounded text-indigo-600 border-gray-300"
                   />
                   <span className="text-sm font-bold text-gray-700 uppercase tracking-tight">Active</span>
                 </label>
               </div>
+
               <div className="flex gap-4 pt-6">
                 <button
                   type="button"
-                  onClick={() => { setShowForm(false); setEditing(null); }}
+                  onClick={() => setSelectedCharity(undefined)}
                   className="flex-1 px-6 py-4 border border-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-50 transition-all"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-6 py-4 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700 transition-all hover:scale-105"
+                  className="flex-1 px-6 py-4 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700 transition-all"
                 >
-                  {editing ? 'Save Changes' : 'Create Charity'}
+                  {selectedCharity ? 'Save Changes' : 'Create Charity'}
                 </button>
               </div>
             </form>

@@ -34,12 +34,6 @@ export default async function AdminLayout({ children }: { children: ReactNode })
               {item.name}
             </Link>
           ))}
-          <Link
-            href="/dashboard"
-            className="block px-4 py-3 rounded-md font-bold text-sm text-indigo-400 hover:text-white mt-10"
-          >
-            ← Back to User Panel
-          </Link>
         </nav>
         <div className="p-4 border-t border-indigo-800 bg-black/20">
            <span className="text-[10px] uppercase font-black text-indigo-500 mb-2 block">Logged as Admin</span>
